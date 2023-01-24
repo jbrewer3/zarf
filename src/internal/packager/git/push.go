@@ -18,6 +18,7 @@ import (
 
 // PushRepo pushes a git repository from the local path to the configured git server.
 func (g *Git) PushRepo(localPath string) error {
+	attempts := 1
 	spinner := message.NewProgressSpinner("Processing git repo at %s", localPath)
 	defer spinner.Stop()
 
@@ -31,9 +32,12 @@ func (g *Git) PushRepo(localPath string) error {
 		return err
 	}
 
-	if err := g.push(repo, spinner); err != nil {
-		spinner.Warnf("Unable to push the git repo %s", basename)
+	if err := g.push(repo, spinner, attempts); err != nil && attempts <= 3 {
+		spinner.Warnf("Unable to push the git repo %s Reason: %v Attempt %v of 3", basename, err, attempts)
+		attempts++
 		return err
+	}else{
+		spinner.Warnf("Unable to push the git repo %s Reason: %v retry limit reached", basename, err)
 	}
 
 	// Add the read-only user to this repo
@@ -57,7 +61,6 @@ func (g *Git) PushRepo(localPath string) error {
 			return err
 		}
 	}
-
 	spinner.Success()
 	return nil
 }
@@ -91,11 +94,10 @@ func (g *Git) prepRepoForPush() (*git.Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offline remote: %w", err)
 	}
-
 	return repo, nil
 }
 
-func (g *Git) push(repo *git.Repository, spinner *message.Spinner) error {
+func (g *Git) push(repo *git.Repository, spinner *message.Spinner, attempts int) error {
 	gitCred := http.BasicAuth{
 		Username: g.Server.PushUsername,
 		Password: g.Server.PushPassword,
